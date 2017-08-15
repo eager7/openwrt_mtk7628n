@@ -1,0 +1,338 @@
+--- linux-3.10.14.old/drivers/char/ralink_gpio.c	2017-04-07 11:56:12.000000000 +0800
++++ linux-3.10.14/drivers/char/ralink_gpio.c	2017-08-14 16:13:02.683938353 +0800
+@@ -54,6 +54,8 @@
+ 
+ #define NAME			"ralink_gpio"
+ #define RALINK_GPIO_DEVNAME	"gpio"
++
++irqreturn_t ralink_gpio_irq_handler(int irq, void *irqaction);
+ int ralink_gpio_major = 252;
+ int ralink_gpio_irqnum = 0;
+ u32 ralink_gpio_intp = 0;
+@@ -149,6 +151,36 @@
+ MODULE_LICENSE("GPL");
+ ralink_gpio_reg_info info;
+ 
++/** PCT Add */
++static btn_control_t btn_control;
++
++static void gpio_init(void)
++{
++	//Set SD digital mode
++	(*(volatile u32 *)RALINK_AGPIO_CFG) 	&= cpu_to_le32(~(0x0f<<17));
++	(*(volatile u32 *)RALINK_AGPIO_CFG) 	|= cpu_to_le32(0x0f<<17);
++	//Set SD_Mode as GPIO
++	(*(volatile u32 *)RALINK_REG_GPIOMODE) 	&= 	cpu_to_le32(~(0x03<<10));	//clear the 10&11 bit
++	(*(volatile u32 *)RALINK_REG_GPIOMODE) 	|=  cpu_to_le32((0x01<<10));	//set the 10&11 bit,GPIO
++    //Set Key I/O
++    (*(volatile u32 *)RALINK_REG_PIODIR) 	&= 	cpu_to_le32(~(0x01<<BUTTON_SW2));//KEY2
++    (*(volatile u32 *)RALINK_REG_PIODIR) 	&= 	cpu_to_le32(~(0x01<<BUTTON_SW3));//KEY3
++    (*(volatile u32 *)RALINK_REG_PIODIR) 	&= 	cpu_to_le32(~(0x01<<BUTTON_SW4));//KEY4
++
++	//Set LED I/O
++	(*(volatile u32 *)RALINK_REG_PIODIR) 	&= 	cpu_to_le32(~(0x01<<25));//LED2
++	(*(volatile u32 *)RALINK_REG_PIODIR) 	|=	cpu_to_le32((0x01<<25));	
++	(*(volatile u32 *)RALINK_REG_PIODIR) 	&= 	cpu_to_le32(~(0x01<<27));//LED3
++	(*(volatile u32 *)RALINK_REG_PIODIR) 	|=	cpu_to_le32((0x01<<27));
++
++    //enable gpio interrupt
++    //*(volatile u32 *)(RALINK_REG_INTENA) = cpu_to_le32(RALINK_INTCTL_PIO);
++    (*(volatile u32 *)RALINK_REG_INTDIS) 	= cpu_to_le32(RALINK_INTCTL_PIO);//Disable interrupt
++
++}
++//end pct add
++
++
+ void gpio_click_notify(struct work_struct *work)
+ {
+     //printk("<hua-dbg> %s, 1\n", __FUNCTION__);
+@@ -316,8 +348,12 @@
+ #endif
+ 
+ 	req &= RALINK_GPIO_DATA_MASK;
++    printk(KERN_DEBUG "received iotcl command:[0x%02x]\n", req);
+ 
+ 	switch(req) {
++	case RALINK_GPIO_INIT:
++		/** PCT */
++		gpio_init();
+ 	case RALINK_GPIO_SET_DIR:
+ 		*(volatile u32 *)(RALINK_REG_PIODIR) = cpu_to_le32(arg);
+ 		break;
+@@ -348,22 +384,14 @@
+ 		*(volatile u32 *)(RALINK_REG_INTENA) = cpu_to_le32(RALINK_INTCTL_PIO);
+ 		break;
+ 	case RALINK_GPIO_DISABLE_INTP:
+-#if defined (CONFIG_RALINK_MT7621) || defined (CONFIG_RALINK_MT7628)
+-		*(volatile u32 *)(RALINK_REG_PIORENA) = 0;
+-		*(volatile u32 *)(RALINK_REG_PIOFENA) = 0;
+-		*(volatile u32 *)(RALINK_REG_PIO6332RENA) = 0;
+-		*(volatile u32 *)(RALINK_REG_PIO6332FENA) = 0;
+-		*(volatile u32 *)(RALINK_REG_PIO9564RENA) = 0;
+-		*(volatile u32 *)(RALINK_REG_PIO9564FENA) = 0;
+-#else
+ 		*(volatile u32 *)(RALINK_REG_INTDIS) = cpu_to_le32(RALINK_INTCTL_PIO);
+-#endif
+ 		break;
+ 	case RALINK_GPIO_REG_IRQ:
+ 		copy_from_user(&info, (ralink_gpio_reg_info *)arg, sizeof(info));
+ 		if (0 <= info.irq && info.irq < RALINK_GPIO_NUMBER) {
+ 			ralink_gpio_info[info.irq].pid = info.pid;
+ #if defined (RALINK_GPIO_HAS_2722)
++			printk(KERN_DEBUG "RALINK_GPIO_HAS_2722\n");
+ 			if (info.irq <= 21) {
+ 				tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIORENA));
+ 				tmp |= (0x1 << info.irq);
+@@ -381,28 +409,15 @@
+ 				*(volatile u32 *)(RALINK_REG_PIO2722FENA) = cpu_to_le32(tmp);
+ 			}
+ #elif defined (RALINK_GPIO_HAS_9532)
+-			if (info.irq <= 31) {
+-#if defined (CONFIG_FB_MEDIATEK_ILITEK) || defined (CONFIG_FB_MEDIATEK_TRULY)&& defined (CONFIG_RALINK_MT7621)
+-				if(info.irq !=10){
+-					tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIORENA));
+-					tmp |= (0x1 << info.irq);
+-					*(volatile u32 *)(RALINK_REG_PIORENA) = cpu_to_le32(tmp);
+-					tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIOFENA));
+-					tmp |= (0x1 << info.irq);
+-					*(volatile u32 *)(RALINK_REG_PIOFENA) = cpu_to_le32(tmp);
+-				}else if (info.irq ==10){
+-					tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIOFENA));
+-					tmp |= (0x1 << info.irq);
+-					*(volatile u32 *)(RALINK_REG_PIOFENA) = cpu_to_le32(tmp);
+-				}
+-#else
+-					tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIORENA));
+-					tmp |= (0x1 << info.irq);
+-					*(volatile u32 *)(RALINK_REG_PIORENA) = cpu_to_le32(tmp);
+-					tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIOFENA));
+-					tmp |= (0x1 << info.irq);
+-					*(volatile u32 *)(RALINK_REG_PIOFENA) = cpu_to_le32(tmp);
+-#endif
++			    printk(KERN_DEBUG "RALINK_GPIO_HAS_9532\n");
++				if (info.irq <= 31) {
++				printk(KERN_DEBUG "Initalize Interrupt[%d]\n", info.irq);
++				tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIORENA));
++				tmp |= (0x1 << info.irq);
++				*(volatile u32 *)(RALINK_REG_PIORENA) = cpu_to_le32(tmp);
++				tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIOFENA));
++				tmp |= (0x1 << info.irq);
++				*(volatile u32 *)(RALINK_REG_PIOFENA) = cpu_to_le32(tmp);
+ 			} else if (info.irq <= 63) {
+ 				tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO6332RENA));
+ 				tmp |= (0x1 << (info.irq-32));
+@@ -531,6 +546,48 @@
+ 		*(volatile u32 *)(RALINK_REG_PIO2722SET) = cpu_to_le32(arg);
+ 		break;
+ #elif defined (RALINK_GPIO_HAS_9532)
++	
++//add by zys
++	case TCL_SET_GPIOMODE:
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_GPIOMODE));			
++		tmp |= cpu_to_le32(arg);
++		*(volatile u32 *)(RALINK_REG_GPIOMODE) = tmp; //set gpio mode	
++	case TCL_SET_GPIOMODE2:
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_GPIOMODE2));			
++		tmp |= cpu_to_le32(arg);
++		*(volatile u32 *)(RALINK_REG_GPIOMODE2) = tmp; //set gpio mode	
++	case TCL_GPIO3100_WRITE_HIGH:
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIODATA));
++		tmp |= cpu_to_le32(arg);
++		*(volatile u32 *)(RALINK_REG_PIODATA) = tmp;
++		break;
++	case TCL_GPIO3100_WRITE_LOW:
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIODATA));
++		tmp &= ~cpu_to_le32(arg);
++		*(volatile u32 *)(RALINK_REG_PIODATA) = tmp;
++		break;
++	case TCL_GPIO6332_WRITE_HIGH:
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO6332DATA));
++		tmp |= cpu_to_le32(arg);
++		*(volatile u32 *)(RALINK_REG_PIO6332DATA) = tmp;
++		break;
++	case TCL_GPIO6332_WRITE_LOW:
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO6332DATA));
++		tmp &= ~cpu_to_le32(arg);
++		*(volatile u32 *)(RALINK_REG_PIO6332DATA) = tmp;
++		break;
++	case TCL_GPIO9564_WRITE_HIGH:
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO9564DATA));
++		tmp |= cpu_to_le32(arg);
++		*(volatile u32 *)(RALINK_REG_PIO9564DATA) = tmp;
++		break;
++	case TCL_GPIO9564_WRITE_LOW:
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO9564DATA));
++		tmp &= ~cpu_to_le32(arg);
++		*(volatile u32 *)(RALINK_REG_PIO9564DATA) = tmp;
++		break;
++//zys
++
+ 	case RALINK_GPIO6332_SET_DIR:
+ 		*(volatile u32 *)(RALINK_REG_PIO6332DIR) = cpu_to_le32(arg);
+ 		break;
+@@ -827,7 +884,19 @@
+     INIT_WORK(&gpio_event_click, gpio_click_notify);
+ 	return 0;
+ }
++int ralink_gpio_read(struct file *filp, char __user *buf, size_t size, loff_t *ppos)
++{
++    if(size != 2){
++        return -EINVAL;
++    }
+ 
++    if(copy_to_user(buf, (unsigned char*)&btn_control, size)){
++        return -EFAULT;
++	}
++    btn_control.state = 0;
++    btn_control.value = 0;
++	return 0;
++}
+ int ralink_gpio_release(struct inode *inode, struct file *file)
+ {
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+@@ -847,6 +916,7 @@
+ 	ioctl:		ralink_gpio_ioctl,
+ #endif
+ 	open:		ralink_gpio_open,
++	read:       ralink_gpio_read,
+ 	release:	ralink_gpio_release,
+ };
+ 
+@@ -1132,8 +1202,8 @@
+ 		}
+ 	}
+ #else
+-#if defined (RALINK_GPIO_HAS_9532)
+-	for (i = 0; i < 32; i++) {
++	#if defined (RALINK_GPIO_HAS_9532)
++	for (i = 0; i < 31; i++) {
+ 		ralink_gpio_led_stat[i].ticks++;
+ 		if (ralink_gpio_led_data[i].gpio == -1){ //-1 means unused	
+ 			continue;
+@@ -2478,9 +2548,9 @@
+ 	add_timer(&ralink_gpio_led_timer);
+ }
+ #endif
+-
+ int __init ralink_gpio_init(void)
+ {
++    unsigned long tmp = 0;
+ 	unsigned int i;
+ 	u32 gpiomode;
+ 
+@@ -2517,7 +2587,7 @@
+ #endif
+ 	gpiomode |= RALINK_GPIOMODE_DFT;
+ 	*(volatile u32 *)(RALINK_REG_GPIOMODE) = cpu_to_le32(gpiomode);
+-
++	
+ 	//enable gpio interrupt
+ 	*(volatile u32 *)(RALINK_REG_INTENA) = cpu_to_le32(RALINK_INTCTL_PIO);
+ 	for (i = 0; i < RALINK_GPIO_NUMBER; i++) {
+@@ -2528,6 +2598,7 @@
+ #ifdef CONFIG_RALINK_GPIO_LED
+ 	ralink_gpio_led_init_timer();
+ #endif
++	
+ 	printk("Ralink gpio driver initialized\n");
+ 	return 0;
+ }
+@@ -2580,19 +2651,14 @@
+ 	}
+ 
+ 	if (usr == 1) {
+-		#if defined (CONFIG_FB_MEDIATEK_ILITEK) || defined (CONFIG_FB_MEDIATEK_TRULY)&& defined (CONFIG_RALINK_MT7621)
+-		#else
+-		printk(KERN_NOTICE NAME ": sending a SIGUSR1 to process %d\n",
++		printk(KERN_NOTICE NAME ": sending a SIGUSR2 to process %d\n",
+ 				ralink_gpio_info[ralink_gpio_irqnum].pid);
+-		#endif
+-		send_sig(SIGUSR1, p, 0);
++		//send_sig(SIGUSR1, p, 0);
++		send_sig(SIGUSR2, p, 0);
+ 	}
+ 	else if (usr == 2) {
+-		#if defined (CONFIG_FB_MEDIATEK_ILITEK) || defined (CONFIG_FB_MEDIATEK_TRULY)&& defined (CONFIG_RALINK_MT7621)
+-		#else
+ 		printk(KERN_NOTICE NAME ": sending a SIGUSR2 to process %d\n",
+ 				ralink_gpio_info[ralink_gpio_irqnum].pid);
+-		#endif
+ 		send_sig(SIGUSR2, p, 0);
+ 	}
+ }
+@@ -2671,9 +2737,7 @@
+ 
+ #endif
+ }
+-#if defined (CONFIG_FB_MEDIATEK_ILITEK) || defined (CONFIG_FB_MEDIATEK_TRULY)&& defined (CONFIG_RALINK_MT7621)
+-int lcdtimes=0;
+-#endif
++
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+ void ralink_gpio_irq_handler(unsigned int irq, struct irqaction *irqaction)
+ #else
+@@ -2687,6 +2751,12 @@
+ 	static struct gpio_time_record record[RALINK_GPIO_NUMBER];
+ 	unsigned long now;
+ 	int i;
++	//PCT
++	static unsigned long btn = 0;
++    static unsigned long btn_falling = 0;
++    static unsigned long btn_rising = 0;
++	printk(KERN_DEBUG "ralink_gpio_irq_handler\n");
++
+ 	ralink_gpio_save_clear_intp();
+ 	now = jiffies;
+ #if defined (RALINK_GPIO_HAS_2722)
+@@ -2756,32 +2826,25 @@
+ 				 */
+ 			}
+ 			else {
++				printk(KERN_DEBUG "button value %d\n", i);
++				btn_control.value = i;
+ 				record[i].rising = now;
+ 				if (time_before(now, record[i].falling + 200L)) {
+ 					//one click
+ 					printk("one click\n");
++					btn_control.state = SHORT_KEY;
+ 					schedule_work(&gpio_event_click);
+ 				}
+ 				else {
+ 					//press for several seconds
+ 					printk("press for several seconds\n");
++					btn_control.state = LONG_KEY;
+ 					schedule_work(&gpio_event_hold);
+ 				}
+ 			}
+ 		}
+ 		else { //falling edge
+-			 record[i].falling = now;
+-			#if defined (CONFIG_FB_MEDIATEK_ILITEK) || defined (CONFIG_FB_MEDIATEK_TRULY)&& defined (CONFIG_RALINK_MT7621)
+-			
+-			  lcdtimes++;
+-			  if(lcdtimes <=4 ){
+-			    schedule_work(&gpio_event_click);
+-				}
+-				if (lcdtimes > 4){
+-					schedule_work(&gpio_event_hold);
+-					lcdtimes=0;
+-		  	}
+-			#endif
++			record[i].falling = now;
+ 		}
+ 		break;
+ 	}
+@@ -2994,11 +3057,11 @@
+ 			else {
+ 				record[i].rising = now;
+ 				if (time_before(now, record[i].falling + 200L)) {
+-					printk("i=%d, one click\n", i);
++					printk(KERN_DEBUG "i=%d, one click\n", i);
+ 					schedule_work(&gpio_event_click);
+ 				}
+ 				else {
+-					printk("i=%d, push several seconds\n", i);
++					printk(KERN_DEBUG "i=%d, push several seconds\n", i);
+ 					schedule_work(&gpio_event_hold);
+ 				}
+ 			}

@@ -1,0 +1,85 @@
+--- linux-3.10.14.old/drivers/char/ralink_gpio.h	2017-04-07 11:56:13.000000000 +0800
++++ linux-3.10.14/drivers/char/ralink_gpio.h	2017-08-14 10:14:27.240295907 +0800
+@@ -75,7 +75,20 @@
+ #define RALINK_GPIO_DISABLE_INTP	0x09
+ #define RALINK_GPIO_REG_IRQ		0x0A
+ #define RALINK_GPIO_LED_SET		0x41
++/** PCT Add */
++#define RALINK_GPIO_INIT		0x42 
++#define BUTTON_SW2 27
++#define BUTTON_SW3 23
++#define BUTTON_SW4 22
++
++#define SHORT_KEY 0x01
++#define LONG_KEY 0x02
++typedef struct _btn_control{
++    unsigned char state;//0x01,short press; 0x02,long press
++    unsigned char value;
++} btn_control_t;
+ 
++//end pct
+ #if defined (RALINK_GPIO_HAS_2722)
+ 
+ #define	RALINK_GPIO2722_SET_DIR		0x51
+@@ -176,6 +189,15 @@
+ #define	RALINK_GPIO9564_SET		0x23
+ #define	RALINK_GPIO9564_CLEAR		0x33
+ 
++#define TCL_SET_GPIOMODE2           0xf0
++#define TCL_SET_GPIOMODE            0xf1
++#define	TCL_GPIO3100_WRITE_HIGH		0xf2
++#define	TCL_GPIO3100_WRITE_LOW		0xf3
++#define	TCL_GPIO6332_WRITE_HIGH		0xf4
++#define	TCL_GPIO6332_WRITE_LOW		0xf5
++#define	TCL_GPIO9564_WRITE_HIGH		0xf6
++#define	TCL_GPIO9564_WRITE_LOW		0xf7
++
+ #endif
+ 
+ /*
+@@ -195,6 +217,7 @@
+ #define RALINK_REG_INTENA		(RALINK_IRQ_ADDR   + 0x80)
+ #define RALINK_REG_INTDIS		(RALINK_IRQ_ADDR   + 0x78)
+ 
++#define RALINK_AGPIO_CFG		(RALINK_SYSCTL_ADDR + 0x3C)
+ #define RALINK_REG_PIOINT		(RALINK_PRGIO_ADDR + 0x90)
+ #define RALINK_REG_PIOEDGE		(RALINK_PRGIO_ADDR + 0xA0)
+ #define RALINK_REG_PIORENA		(RALINK_PRGIO_ADDR + 0x50)
+@@ -479,20 +502,22 @@
+ #define RALINK_GPIOMODE_SPI_SLAVE	0x4
+ #define RALINK_GPIOMODE_SPI_CS1		0x10
+ #define RALINK_GPIOMODE_I2S		0x40
+-#define RALINK_GPIOMODE_UART1		0x100
++#define RALINK_GPIOMODE_UART1		0x100  //uart0_mode to gpio mode
+ #define RALINK_GPIOMODE_SDXC		0x400
+ #define RALINK_GPIOMODE_SPI		0x1000
+ #define RALINK_GPIOMODE_WDT		0x4000
+ #define RALINK_GPIOMODE_PERST		0x10000
+ #define RALINK_GPIOMODE_REFCLK		0x40000
+ #define RALINK_GPIOMODE_I2C		0x100000
+-#define RALINK_GPIOMODE_EPHY		0x40000
+-#define RALINK_GPIOMODE_P0LED		0x100000
+-#define RALINK_GPIOMODE_WLED		0x400000
+-#define RALINK_GPIOMODE_UART2		0x1000000
+-#define RALINK_GPIOMODE_UART3		0x4000000
++#define RALINK_GPIOMODE_EPHY		0x40000   //?
++#define RALINK_GPIOMODE_P0LED		0x100000  //?
++#define RALINK_GPIOMODE_WLED		0x400000  //?
++#define RALINK_GPIOMODE_UART2		0x1000000  //uart1_mode to gpio mode
++#define RALINK_GPIOMODE_UART3		0x4000000  //uart2_mode to gpio mode
+ #define RALINK_GPIOMODE_PWM0		0x10000000
+ #define RALINK_GPIOMODE_PWM1		0x40000000
++#define RALINK_GPIOMODE_WLED_AN		0x1      //GPIOMODE2
++
+ 
+ #else
+ #error Please Choose System Type
+@@ -505,7 +530,7 @@
+ #elif defined (CONFIG_RALINK_MT7620)
+ #define RALINK_GPIOMODE_DFT		(RALINK_GPIOMODE_I2C)
+ #elif defined (CONFIG_RALINK_MT7628)
+-#define RALINK_GPIOMODE_DFT		(RALINK_GPIOMODE_UART2 | RALINK_GPIOMODE_UART3) | (RALINK_GPIOMODE_SPI_CS1) | (RALINK_GPIOMODE_WDT) 
++#define RALINK_GPIOMODE_DFT		( RALINK_GPIOMODE_UART3) | (RALINK_GPIOMODE_SPI_CS1) | (RALINK_GPIOMODE_WDT) 
+ #else
+ #define RALINK_GPIOMODE_DFT             (RALINK_GPIOMODE_UARTF)
+ #endif
