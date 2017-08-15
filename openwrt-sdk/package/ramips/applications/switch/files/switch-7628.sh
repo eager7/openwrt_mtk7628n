@@ -85,7 +85,7 @@ fi
 
 setup_switch()
 {
-	configEsw LLLLW
+	configEsw WLLLL
 }
 
 reset_switch()
