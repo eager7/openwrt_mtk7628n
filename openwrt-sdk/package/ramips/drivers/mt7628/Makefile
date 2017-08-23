@@ -36,6 +36,7 @@ define KernelPackage/mt7628
   CATEGORY:=MTK Properties
   TITLE:=MTK MT7628 wifi AP driver
   FILES:=$(PKG_BUILD_DIR)/build/mt7628.ko
+  AUTOLOAD:=$(call AutoLoad,90,mt7628)
   DEPENDS:=@TARGET_ramips_mt7628
   SUBMENU:=Drivers
   MENU:=1

@@ -187,7 +187,7 @@ network={
 }
 EOF
 	if [ -n "$proto" -o "$key_mgmt" == "NONE" ]; then
-#		wpa_supplicant ${bridge:+ -b $bridge} -B -P "/var/run/wifi-${ifname}.pid" -D ${driver:-wext} -i "$ifname" -c /var/run/wpa_supplicant-$ifname.conf $options
+		wpa_supplicant ${bridge:+ -b $bridge} -B -P "/var/run/wifi-${ifname}.pid" -D ${driver:-wext} -i "$ifname" -c /var/run/wpa_supplicant-$ifname.conf $options
 	else
 		return 0
 	fi
