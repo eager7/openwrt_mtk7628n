@@ -40,8 +40,9 @@ config wifi-iface
         option network  lan
         option mode     ap
         option ssid     $ssid
-        option encryption psk2
-        option key      12345678
+        option encryption none
+        #option encryption psk2
+        #option key      12345678
 
 EOF
 

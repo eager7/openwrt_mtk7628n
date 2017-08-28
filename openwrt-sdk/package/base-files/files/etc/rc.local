@@ -22,4 +22,29 @@ smp.sh wifi
 hwnat-enable.sh
 bridge-add.sh
 
+echo "setting wifi state"
+sta_dev=`tail -5 /etc/config/wireless | grep ifname | awk '{print $3}'`
+echo $sta_dev
+
+if [ "'ra0'" = "$sta_dev" ];then
+echo "the current mode of wifi is STA"
+echo "rmmod station driver"
+rmmod mt7628sta
+echo "insmod ap driver"
+insmod /lib/modules/3.10.14/mt7628.ko
+echo "reset wifi status"
+wifi
+fi
+
+sleep 2s
+for i in {1..5}
+do
+	module=`lsmod | grep mt7628sta`
+	if [ module != "" ];then
+	udhcpc -i rai0
+	break
+	sleep 1s
+	fi
+done
+
 exit 0
